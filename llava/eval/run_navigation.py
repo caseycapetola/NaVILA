@@ -6,6 +6,7 @@ import os.path as osp
 import re
 from io import BytesIO
 
+import numpy as np
 import requests
 import torch
 from PIL import Image
@@ -24,7 +25,7 @@ def image_parser(args):
 
 def load_image(image_file):
     if image_file.startswith("http") or image_file.startswith("https"):
-        print("downloading image from url", args.video_file)
+        print("downloading image from url", image_file)
         response = requests.get(image_file)
         image = Image.open(BytesIO(response.content)).convert("RGB")
     else:
@@ -67,8 +68,17 @@ def eval_model(args):
         images, frame_length = get_frame_from_vcap_vlnce(vidcap, args.num_video_frames, fps=None, frame_count=None)
         # this frame_length = raw video frame length
 
+    if len(images) != args.num_video_frames:
+        # Match get_frame_from_vcap_vlnce: pad at the front, sample the history uniformly, keep the latest frame.
+        while len(images) < args.num_video_frames:
+            images.insert(0, Image.new("RGB", images[0].size))
+        sampled_indices = np.linspace(0, len(images) - 1, num=args.num_video_frames - 1, endpoint=False, dtype=int)
+        images = [images[i] for i in sampled_indices] + [images[-1]]
+
     model_name = get_model_name_from_path(args.model_path)
-    tokenizer, model, image_processor, context_len = load_pretrained_model(args.model_path, model_name, args.model_base)
+    tokenizer, model, image_processor, context_len = load_pretrained_model(
+        args.model_path, model_name, args.model_base, load_8bit=args.load_8bit, load_4bit=args.load_4bit
+    )
 
     instruction = args.query
     image_token = "<image>\n"
@@ -130,6 +140,8 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=512)
+    parser.add_argument("--load-8bit", action="store_true", help="Quantize the LLM to 8-bit (bitsandbytes).")
+    parser.add_argument("--load-4bit", action="store_true", help="Quantize the LLM to 4-bit NF4 (bitsandbytes).")
     args = parser.parse_args()
 
     eval_model(args)

@@ -41,6 +41,10 @@ def load_pretrained_model(
     if device != "cuda":
         kwargs["device_map"] = {"": device}
 
+    # torch_dtype is always required: prepare_config_for_eval pops it to set config.model_dtype,
+    # and it is the dtype of the non-quantized modules when loading in 8/4-bit.
+    kwargs["torch_dtype"] = torch.float16
+    # kwargs["torch_dtype"] = torch.bfloat16
     if load_8bit:
         kwargs["load_in_8bit"] = True
     elif load_4bit:
@@ -51,9 +55,6 @@ def load_pretrained_model(
             bnb_4bit_use_double_quant=True,
             bnb_4bit_quant_type="nf4",
         )
-    else:
-        kwargs["torch_dtype"] = torch.float16
-        # kwargs["torch_dtype"] = torch.bfloat16
 
     if is_mm_model(model_path):
         # Load LLaVA model
